@@ -1,537 +1,519 @@
-1.主模块中的代码
-Public Const G_ROUND = 3
-Public Sub GatherGrade(k_a, k_a_pos, g_low, g_high, t_low, t_high, x_left, x_right)
-    Debug.Print "k_a=", k_a
-    Debug.Print "k_a_pos=", k_a_pos
-    Debug.Print "g_low=", g_low
-    Debug.Print "g_high=", g_high
-    Debug.Print "t_low=", t_low
-    Debug.Print "t_high=", t_high
-    Debug.Print "x_left=", x_left
-    Debug.Print "x_right=", x_right
-
-    '开始获取坡度
-    On Error Resume Next
-    If Not IsNull(ThisDrawing.SelectionSets.Item("element")) Then
-        Set sset = ThisDrawing.SelectionSets.Item("element")
-        sset.Delete
-    End If
-    
-    Set sset = ThisDrawing.SelectionSets.Add("element")
-    
-    sset.Select (acSelectionSetAll)
-
-    Dim txt As AcadText
-    Dim ln As AcadLine
-    Dim str As String
-    
-    Dim dicChangePoint '用于保存变坡点，key为变坡点坐标，内容为AcadText对象
-    Dim dicChangePointLine '用于保存变坡点处的小竖线，key为变坡点坐标，内容为AcadLine对象
-    Dim dicGradeLineR '用于保存斜坡的信息，key以右断点的x坐标，内容为CSimpleLine对象
-    Dim dicGradeLineL '用于保存斜坡的信息，key以left点的x坐标，内容为CSimpleLine对象
-    Dim dicGradeValue '用于保存坡度值，key为x坐标，内容为AcadText对象
-    Dim dicGradeDis '用于保存该坡度的长度，key为x坐标，内容为AcadText对象
-    Set dicChangePoint = CreateObject("Scripting.Dictionary")
-    Set dicChangePointLine = CreateObject("Scripting.Dictionary")
-    Set dicGradeLineR = CreateObject("Scripting.Dictionary")
-    Set dicGradeLineL = CreateObject("Scripting.Dictionary")
-    Set dicGradeValue = CreateObject("Scripting.Dictionary")
-    Set dicGradeDis = CreateObject("Scripting.Dictionary")
-    
-    If sset.Count > 0 Then
-        For Each element In sset
-                               
-                'GET BOUNDING BOX POINTS
-                '                        (2)
-                '   --------------------
-                '   |                   |
-                '   |                   |
-                '   |                   |
-                '   --------------------
-                '  (1)
-                
-                element.GetBoundingBox p1, p2
-                y1 = Round(p1(1), G_ROUND)
-                y2 = Round(p2(1), G_ROUND)
-                x1 = Round(p1(0), G_ROUND)
-                x2 = Round(p2(0), G_ROUND)
-                'Debug.Print x_left, x_right, x1, x2
-                'Debug.Print x2 >= x1, y2 >= y1
-                If x1 >= x_left And x2 <= x_right Then
-                
-                    '处理坡度值和起始坐标
-                    If y1 >= g_low And y2 <= g_high Then
-                        Select Case element.ObjectName
-                        Case "AcDbLine"
-                            Set ln = element
-                            'Debug.Print "line:", x1, y1, x2, y2
-                            If x1 <> x2 Then
-                                If y1 <> y2 Or (y1 = y2 And y1 <> g_low And y1 <> g_high) Then
-                                    AddLine dicGradeLineR, ln
-                                    AddLine dicGradeLineL, ln, True
-                                End If
-                            Else
-                                If y1 >= g_low And y2 <= g_high Then
-                                    AddLine dicChangePointLine, ln
-                                End If
-                            End If
-                        Case "AcDbText"
-                            Set txt = element
-                            'IsNumeric
-                            'Debug.Print "grade:", txt.TextString, x1, y1, txt.Rotation, Round(txt.TextAlignmentPoint(0), G_ROUND), Round(txt.TextAlignmentPoint(1), G_ROUND)
-                            str = txt.TextString
-                            If IsNumeric(str) Then
-                                gv = Round(CDbl(str), G_ROUND)
-                                If Abs(txt.Rotation) < 0.1 Then
-                                    If gv < 36 Then
-                                        AddText dicGradeValue, txt
-                                    Else
-                                        AddText dicGradeDis, txt
-                                    End If
-                                End If
-                            End If
-                        End Select
-                    End If
-                    
-                    '处理变坡点信息
-                    If y1 >= t_low And y2 <= t_high Then
-                        Select Case element.ObjectName
-                        Case "AcDbText", "AcDbMText"
-                            Set txt = element
-                            'Debug.Print "text", txt.TextString, x1, y1, txt.Rotation, txt.TextAlignmentPoint(0), txt.TextAlignmentPoint(1)
-                            AddText dicChangePoint, txt
-                        End Select
-                    End If
-                End If
-        Next element
-    End If
-    GenerateGradeTable dicChangePointLine, dicChangePoint, dicGradeLineR, dicGradeLineL, dicGradeValue, dicGradeDis, k_a, k_a_pos
-End Sub
-
-Sub GenerateGradeTable(dicChangePointLine, dicChangePoint, dicGradeLineR, dicGradeLineL, dicGradeValue, dicGradeDis, k_a, k_a_pos)
-    If False Then
-    For Each gv In dicGradeValue
-        Debug.Print "g", gv, dicGradeValue(gv)
-    Next
-    For Each gv In dicGradeLineR
-        Debug.Print "R:", gv, dicGradeLineR(gv).x1, dicGradeLineR(gv).x2
-    Next
-    For Each gv In dicGradeLineL
-        Debug.Print "L", gv, dicGradeLineL(gv).x1, dicGradeLineL(gv).x2
-    Next
-    End If
-    '用于保存变坡点，key为变坡点坐标，内容为AcadLine对象
-    '用于保存斜坡的信息，key以右断点的x坐标，内容为CSimpleLine对象
-    '用于保存坡度值，key为x坐标，内容为AcadText对象
-    'Dim allCG() As CGradient '用于保存变坡点的信息，key为x坐标，内容为CGradient对象
-    Dim dicCG
-    Set dicCG = CreateObject("Scripting.Dictionary")
-    'ReDim allCG(1 To dicChangePointLine.Count) As CGradient '用于保存变坡点的信息，key为x坐标，内容为CGradient对象
-    Dim cg As CGradient
-    Dim ln As CSimpleLine
-    Dim R As String, T As String
-    Dim i As Integer, k As Integer
-    'k = 1
-
-    'For Each g In dicChangePoint
-    For Each g In dicChangePointLine
-        'Debug.Print g, dicChangePoint(g)
-        Set cg = New CGradient
-        cg.ChangPointKP = g - k_a_pos + k_a * 1000
-        If dicChangePoint.exists(g) Then
-            cg.ChangPointInfo = dicChangePoint(g)
-            GetRT dicChangePoint(g), R, T
-            cg.Raduis = R
-            cg.TValue = T
-        Else
-            cg.ChangPointInfo = ""
-            cg.Raduis = "Inf"
-            cg.TValue = ""
-            For Each cpstr In dicChangePoint
-                If Abs(cpstr - g) < 5 Then
-                    cg.ChangPointInfo = dicChangePoint(cpstr)
-                    GetRT dicChangePoint(cpstr), R, T
-                    cg.Raduis = R
-                    cg.TValue = T
-                    Exit For
-                End If
-            Next
-        End If
-        'Debug.Print cg.ChangPointKP, cg.Raduis, cg.TValue, dicChangePoint(g)
-        'find left grade line
-        If dicGradeLineR.exists(g) Then
-            Set ln = dicGradeLineR(g)
-            cg.LeftGrade = GetGradeValue(dicGradeValue, ln)
-            cg.LeftDistance = Abs(GetGradeValue(dicGradeDis, ln))
-        End If
-        If dicGradeLineL.exists(g) Then
-            Set ln = dicGradeLineL(g)
-            cg.RightGrade = GetGradeValue(dicGradeValue, ln)
-            cg.RightDistance = Abs(GetGradeValue(dicGradeDis, ln))
-        End If
-        'For i = 1 To k - 1
-            
-        'Next
-        If Not dicCG.exists(g) Then
-            dicCG.Add g, cg
-        End If
-        'Set allCG(k) = cg
-        'k = k + 1
-    Next
-    
-    
+放在这里，供备份和参考。太长不做详细解释。
+模块：MReadTable
+Dim dicHorizontalLine As Variant
+Dim dicVerticalLine As Variant
+Dim arrText() As CText
+Dim file
+Const WRITE_LOG = 0
+Dim WorkDrawing
+Sub test()
     Dim xlApp As Excel.Application
-    Dim wb As Workbook
-    Dim ws As Worksheet
-    
-    Set xlApp = CreateObject("Excel.Application") '创建EXCEL对象
-    Set wb = xlApp.Workbooks.Add
-    xlApp.Visible = False
-    Set ws = wb.Worksheets(1) '设置活动工作表
-    Dim row As Integer
-    row = 1
-    ws.Cells(row, 1) = "Before slope value"
-    ws.Cells(row, 2) = "After slope value"
-    ws.Cells(row, 3) = "Raduis"
-    ws.Cells(row, 4) = "Change point KP"
-    ws.Cells(row, 5) = "2T value"
-    ws.Cells(row, 6) = "Before slope length"
-    ws.Cells(row, 7) = "After slope length"
-    ws.Cells(row, 8) = "info"
-    
-    Dim str As String
-    str = "Before slope value;After slope value;Raduis;Change point KP;2T value;Before slope length;After slope length;info;"
-    Debug.Print str
-    For Each g In dicCG
-        row = row + 1
-        ws.Cells(row, 1) = dicCG(g).LeftGrade
-        ws.Cells(row, 2) = dicCG(g).RightGrade
-        ws.Cells(row, 3) = dicCG(g).Raduis
-        ws.Cells(row, 4) = dicCG(g).ChangPointKP
-        ws.Cells(row, 5) = dicCG(g).TValue
-        ws.Cells(row, 6) = dicCG(g).LeftDistance
-        ws.Cells(row, 7) = dicCG(g).RightDistance
-        ws.Cells(row, 8) = dicCG(g).ChangPointInfo
-        
-        str = CStr(dicCG(g).LeftGrade) & ";"
-        str = str & CStr(dicCG(g).RightGrade) & ";"
-        str = str & CStr(dicCG(g).Raduis) & ";"
-        str = str & CStr(dicCG(g).ChangPointKP) & ";"
-        str = str & CStr(dicCG(g).TValue) & ";"
-        str = str & CStr(dicCG(g).LeftDistance) & ";"
-        str = str & CStr(dicCG(g).RightDistance) & ";"
-        str = str & CStr(dicCG(g).ChangPointInfo) & ";"
-        Debug.Print str
-        'Debug.Print ""
-    Next
+    Dim xlBook As Excel.Workbook
+    Dim xlSheet As Excel.WorkSheet
+    Set xlApp = CreateObject("Excel.Application")
+    Set xlBook = xlApp.Workbooks.Add
+    Set xlSheet = xlBook.Worksheets(1)
     xlApp.Visible = True
-    ws.Activate
-    
-    SortAndCheck ws, row
-    
-    With xlApp.ActiveWindow
-        .SplitColumn = 0
-        .SplitRow = 1
-        .FreezePanes = True
-    End With
-    'ws.Range("A1:L1").Select
-    'xlApp.Selection.AutoFilter
+   
+End Sub
+Sub ReadTable()
+   
+    'file.WriteLine "Type;Object;TagID;Position;Track;Segment;Accuracy;Note;SetupOffset"
+   
+    SelectionName = "ss1"
+    Dim sset As AcadSelectionSet '¶¨ÒåÑ¡Ôñ¼¯¶ÔÏó
+    Dim element As AcadEntity '¶¨ÒåÑ¡Ôñ¼¯ÖÐµÄÔªËØ¶ÔÏó
+    For Each sset In ThisDrawing.SelectionSets
+        If sset.name = SelectionName Then
+            sset.Delete
+            Exit For
+        End If
+    Next
+   
+    Erase arrText
+    Set dicHorizontalLine = CreateObject("Scripting.Dictionary")
+    Set dicVerticalLine = CreateObject("Scripting.Dictionary")
+    'Set dicText = CreateObject("Scripting.Dictionary")
+    Dim txt As AcadText
+    Dim txtNum As Integer
+    txtNum = 0
+   
+    Set sset = ThisDrawing.SelectionSets.Add(SelectionName) 'ÐÂ½¨Ò»¸öÑ¡Ôñ¼¯
+    Dim objType As String
+    sset.SelectOnScreen 'ÌáÊ¾ÓÃ»§Ñ¡Ôñ"
+    If sset.Count > 0 Then
+        For Each element In sset 'ÔÚÑ¡Ôñ¼¯ÖÐ½øÐÐÑ­»·
+            objType = element.ObjectName
+            Select Case objType
+            Case "AcDbLine"
+                AddLine element.StartPoint, element.EndPoint
+            Case "AcDbText"
+                Set txt = element
+                If 1 Then
+                    On Error Resume Next
+                    txtNum = UBound(arrText)
+                End If
+                txtNum = txtNum + 1
+                ReDim Preserve arrText(1 To txtNum)
+                Set arrText(txtNum) = New CText
+                arrText(txtNum).TextString = txt.TextString
+                Dim MinPoint, MaxPoint
+                txt.GetBoundingBox MinPoint, MaxPoint
+                arrText(txtNum).SetMaxPoint MaxPoint
+                arrText(txtNum).SetMinPoint MinPoint
+                'GetBoundingBox
+            End Select
+        Next
+        If WRITE_LOG = 1 Then
+            SaveLines dicHorizontalLine, "Horizontal"
+            SaveLines dicVerticalLine, "Vertical"
+           
+            Dim fsObj
+            Set fsObj = CreateObject("Scripting.FileSystemObject")
+            Set file = fsObj.CreateTextFile(ThisDrawing.Path & "\debug.csv", True)
+            file.WriteLine "Remove Horizontal..."
+        End If
+        RemoveShortLines dicHorizontalLine, dicVerticalLine
+        If WRITE_LOG = 1 Then
+            file.WriteLine "Remove Vertical..."
+        End If
+        RemoveShortLines dicVerticalLine, dicHorizontalLine
+        'DrawLines dicHorizontalLine
+        'DrawLines dicVerticalLine, False
+        'DrawTexts
+        ExportExcel
+        If WRITE_LOG = 1 Then
+            file.Close
+        End If
+    End If
+    sset.Delete 'É¾³ýÑ¡Ôñ¼¯"
+    'dim ttps as
+    'For Each tps In dicHorizontalLine
+   
+    'Next
+End Sub
+Sub ExportExcel()
+    Dim xlApp As Excel.Application
+    Dim xlBook As Excel.Workbook
+    Dim xlSheet As Excel.WorkSheet
+    Set xlApp = CreateObject("Excel.Application")
+    Set xlBook = xlApp.Workbooks.Add
+    Set xlSheet = xlBook.Worksheets(1)
+    '
+    'dicVerticalLine
+   
+    Dim dicHorizontalSort
+    Dim dicVerticalSort
+    Set dicHorizontalSort = CreateObject("Scripting.Dictionary")
+    Set dicVerticalSort = CreateObject("Scripting.Dictionary")
+    SortDic dicHorizontalLine, dicHorizontalSort
+    SortDic dicVerticalLine, dicVerticalSort
+   
+    Dim dicCells
+    Set dicCells = CreateObject("Scripting.Dictionary")
+   
+    iHorizontal = dicHorizontalSort.Count
+    iVertical = dicVerticalSort.Count
+    Dim downH, upH
+    Dim downV, upV
+    Dim x, y
+    Dim col_from, col_to, row_from, row_to
+    Dim strCell As String
+    Dim aCell As CCell
+    Dim txt As CText
+    For Each atxt In arrText
+        Set txt = atxt
+        'xlSheet.Cells(row, col) = txt
+        'col = col + 1
+        x = txt.GetMidX()
+        y = txt.GetMidY()
+        GetScale dicHorizontalLine, y, x, downH, upH
+        GetScale dicVerticalLine, x, y, downV, upV
+        'Debug.Print x, y, dicHorizontalSort(downH), dicHorizontalSort(upH), dicVerticalSort(downV), dicVerticalSort(upV)
+        'Debug.Print txt.TextString, downV, x, upV, downH, y, upH
+        'Debug.Print txt.TextString, dicVerticalSort(downV), x, dicVerticalSort(upV), iHorizontal - dicHorizontalSort(downH), y, iHorizontal - dicHorizontalSort(upH)
+        col_from = dicVerticalSort(downV) - 1
+        col_to = dicVerticalSort(upV) - 1
+        row_from = iHorizontal - dicHorizontalSort(upH)
+        row_to = iHorizontal - dicHorizontalSort(downH)
+       
+        strCell = xlSheet.Cells(row_from + 1, col_from + 1)
+        xlSheet.Range(xlSheet.Cells(row_from + 1, col_from + 1), xlSheet.Cells(row_to, col_to)).MergeCells = True
+        xlSheet.Cells(row_from + 1, col_from + 1).NumberFormat = "@"
+        strCell = (col_from + 1) & "-" & (row_from + 1)
+        If dicCells.exists(strCell) Then
+            dicCells(strCell).AddText txt
+        Else
+            Set aCell = New CCell
+            aCell.col = col_from + 1
+            aCell.row = row_from + 1
+            aCell.AddText txt
+            dicCells.Add strCell, aCell
+        End If
+    Next
+   
+    For Each ecell In dicCells
+        Set aCell = dicCells(ecell)
+        xlSheet.Cells(aCell.row, aCell.col) = aCell.GetString
+    Next
+        If Trim(strCell) <> "" Then
+            strCell = strCell & Chr(10) & txt.TextString
+        Else
+            strCell = txt.TextString
+        End If
+        xlSheet.Cells(row_from + 1, col_from + 1) = txt.TextString
+    xlApp.Visible = True
 End Sub
 
-Sub SortAndCheck(ws As Worksheet, row As Integer)
-    ws.Range("D2").Select
-    ws.Sort.SortFields.Clear
-    ws.Sort.SortFields.Add key:=ws.Range("D2:D" & row), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:=xlSortNormal
-    With ws.Sort
-        .SetRange ws.Range("A2:H" & row)
-        .Header = xlNo
-        .MatchCase = False
-        .Orientation = xlTopToBottom
-        .SortMethod = xlPinYin
-        .Apply
-    End With
-    
-    ws.Columns("H:H").EntireColumn.AutoFit
-    
-    For i = 2 To row
-        ws.Range("I" & i) = i
-        ws.Range("I" & (i + row - 1)) = i - 1
-    Next
-    
-    row = 2 * row - 1
-    ws.Range("I2").Select
-    ws.Sort.SortFields.Clear
-    ws.Sort.SortFields.Add key:=ws.Range("I2:I" & row), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:=xlSortNormal
-    With ws.Sort
-        .SetRange ws.Range("A2:I" & row)
-        .Header = xlNo
-        .MatchCase = False
-        .Orientation = xlTopToBottom
-        .SortMethod = xlPinYin
-        .Apply
-    End With
-    
-    ws.Range("I2:I" & row).Clear
-    
-    For i = 3 To row Step 2
-        If i > 3 Then
-            ref = i - 2
-            ws.Range("I" & i).Formula = "=D" & ref & "+" & "G" & ref
-            ws.Range("J" & i).Formula = "=D" & i & "-" & "I" & i
-            ws.Range("J" & i).FormatConditions.Add Type:=xlCellValue, Operator:=xlNotEqual, Formula1:="=0"
-            ws.Range("J" & i).FormatConditions(ws.Range("J" & i).FormatConditions.Count).SetFirstPriority
-            With ws.Range("J" & i).FormatConditions(1).Interior
-                .PatternColorIndex = xlAutomatic
-                .color = 65535
-                .TintAndShade = 0
-            End With
-            ws.Range("J" & i).FormatConditions(1).StopIfTrue = False
-        End If
-        If i < row Then
-            ref = i + 2
-            ws.Range("K" & i).Formula = "=D" & ref & "-" & "F" & ref
-            ws.Range("L" & i).Formula = "=D" & i & "-" & "K" & i
-            ws.Range("L" & i).FormatConditions.Add Type:=xlCellValue, Operator:=xlNotEqual, Formula1:="=0"
-            ws.Range("L" & i).FormatConditions(ws.Range("L" & i).FormatConditions.Count).SetFirstPriority
-            With ws.Range("L" & i).FormatConditions(1).Interior
-                .PatternColorIndex = xlAutomatic
-                .color = 65535
-                .TintAndShade = 0
-            End With
-            ws.Range("L" & i).FormatConditions(1).StopIfTrue = False
-        End If
-    Next
-    
-End Sub
-Sub GetRT(txt, R As String, T As String)
-    'txt = "R-50050 2T-115.0500 E0-0.331"
-    R = Trim(Mid(txt, 3, InStr(3, txt, " 2T-") - 3))
-    T = Trim(Mid(txt, InStr(3, txt, " 2T-") + 4, InStr(3, txt, " E") - InStr(3, txt, " 2T-") - 3))
-End Sub
-Function GetGradeValue(dicGradeValue, ln As CSimpleLine) As Double
-    GetGradeValue = -100
-    
-    For Each gv In dicGradeValue
-        dgv = CDbl(gv)
-        If dgv > ln.x1 And dgv < ln.x2 Then
-            If ln.y2 >= ln.y1 Then
-                GetGradeValue = Abs(dicGradeValue(gv))
-            Else
-                GetGradeValue = -Abs(dicGradeValue(gv))
+Sub GetScale(dic, y_x, x_y, down, up)
+    down = -1
+    up = 9999999
+    For Each v In dic
+        If dic(v).IsWithin(x_y) Then
+            If v > down And v < y_x Then
+                down = v
             End If
+            If v < up And v > y_x Then
+                up = v
+            End If
+        End If
+    Next
+End Sub
+Sub SortDic(dic, sort)
+    'j = 0
+    For Each num In dic
+        i = 1
+        For Each num1 In dic
+            If num > num1 Then
+                i = i + 1
+            End If
+        Next
+        'j = j + 1
+        sort.Add num, i
+    Next
+    'For Each num In sort
+    '    Debug.Print num, dicHorizontalSort(num)
+    'Next
+End Sub
+
+Sub SaveLines(dic, fn)
+    If WRITE_LOG = 1 Then
+    Dim fsObj
+    Set fsObj = CreateObject("Scripting.FileSystemObject")
+    Set file = fsObj.CreateTextFile(ThisDrawing.Path & "\" & fn & ".csv", True)
+    file.WriteLine fn & ";Min;Max"
+    For Each tp In dic
+        For Each ctp In dic(tp).GetPoints
+            file.WriteLine tp & ";" & ctp.MinP & ";" & ctp.MaxP
+        Next
+    Next
+    file.Close
+    End If
+End Sub
+Sub DrawLines(dic, Optional Horizontal As Boolean = True)
+    Dim ctp As CPoint
+    For Each tps In dic
+        For Each tp In dic(tps).GetPoints
+            Set ctp = tp
+            DrawLine tps, ctp.MinP, ctp.MaxP, Horizontal
+        Next
+    Next
+End Sub
+Sub DrawTexts()
+    Dim MyText As AcadText
+    For Each txt In arrText
+        'Set MyText = ThisDrawing.ModelSpace.AddText(txt.TextString, txt.MinPoint, 1)
+    Next
+End Sub
+Sub DrawLine(pc, p1, p2, Optional Horizontal As Boolean = True)
+    Dim sp(0 To 2) As Double
+    Dim ep(0 To 2) As Double
+    x_offset = 0
+    y_offset = 25
+    If Horizontal Then
+        sp(0) = p1 + x_offset
+        sp(1) = pc + y_offset
+        sp(2) = 0
+        ep(0) = p2 + x_offset
+        ep(1) = pc + y_offset
+        ep(2) = 0
+    Else
+        sp(0) = pc + x_offset
+        sp(1) = p1 + y_offset
+        sp(2) = 0
+        ep(0) = pc + x_offset
+        ep(1) = p2 + y_offset
+        ep(2) = 0
+    End If
+    Dim MyLine As AcadLine
+    Set MyLine = ThisDrawing.ModelSpace.AddLine(sp, ep)
+End Sub
+Sub RemoveShortLines(ori, ref)
+    Dim ctp As CPoint
+    Dim dicRemove As Variant
+   
+    For Each tps In ori
+        Set dicRemove = CreateObject("Scripting.Dictionary")
+        'i = 1
+        For Each tp In ori(tps).GetPoints
+            Set ctp = tp
+            'Debug.Print "Remove?", tps, tp.MinP, tp.MaxP
+            'strline =
+            If WRITE_LOG = 1 Then
+                file.WriteLine "Remove?" & ";" & tps & ";" & tp.MinP & ";" & tp.MaxP
+            End If
+            If Not IsBorder(ctp, ref) Then
+                dicRemove.Add ctp, ""
+            End If
+        Next
+        ori(tps).RemoveShortLines (dicRemove)
+        Set dicRemove = Nothing
+    Next
+    For Each tps In ori
+        If ori(tps).Count = 0 Then
+            ori.Remove tps
+        End If
+    Next
+End Sub
+Function IsBorder(ByVal tp As CPoint, ByVal ref) As Boolean
+    IsBorder = False
+    For Each tps In ref
+        If tps = tp.MinP Or _
+            tps = tp.MaxP Then
+            IsBorder = True
             Exit Function
         End If
     Next
 End Function
-Sub AddText(dic, txt As AcadText)
-    key = CStr(Round(txt.TextAlignmentPoint(0), G_ROUND))
-    If Not dic.exists(key) Then
-        dic.Add key, txt.TextString
+Sub AddLine(StartPoint, EndPoint)
+    NumDigits = 1
+    ShortestLine = 0.3
+    line_len = ((StartPoint(0) - EndPoint(0)) ^ 2 + (StartPoint(1) - EndPoint(1)) ^ 2) ^ 0.5
+    If line_len < ShortestLine Then Exit Sub
+    StartPoint(0) = Round(StartPoint(0), NumDigits)
+    StartPoint(1) = Round(StartPoint(1), NumDigits)
+    EndPoint(0) = Round(EndPoint(0), NumDigits)
+    EndPoint(1) = Round(EndPoint(1), NumDigits)
+   
+   
+    If StartPoint(0) = EndPoint(0) Then
+        AddLineTo dicVerticalLine, StartPoint(0), StartPoint(1), EndPoint(1)
     End If
+    If StartPoint(1) = EndPoint(1) Then
+        AddLineTo dicHorizontalLine, StartPoint(1), StartPoint(0), EndPoint(0)
+    End If
+
 End Sub
-Sub AddLine(dic, element As AcadLine, Optional lorr As Boolean = False)
-    x1 = element.StartPoint(0)
-    y1 = element.StartPoint(1)
-    x2 = element.EndPoint(0)
-    y2 = element.EndPoint(1)
-    
-    If element.EndPoint(0) < element.StartPoint(0) Then
-        x1 = element.EndPoint(0)
-        y1 = element.EndPoint(1)
-        x2 = element.StartPoint(0)
-        y2 = element.StartPoint(1)
-    End If
-    If lorr Then
-        key = CStr(Round(x1, G_ROUND))
+
+Sub AddLineTo(dicLine, x_y, sp, ep)
+    If dicLine.exists(x_y) Then
+        dicLine(x_y).Add sp, ep
     Else
-        key = CStr(Round(x2, G_ROUND))
-    End If
-    
-    Dim obj As CSimpleLine
-
-    Set obj = New CSimpleLine
-    If Not dic.exists(key) Then
-        obj.x1 = x1
-        obj.x2 = x2
-        obj.y1 = y1
-        obj.y2 = y2
-        dic.Add key, obj
+        Dim tps As CPointSet
+        Set tps = New CPointSet
+        tps.Add sp, ep
+        dicLine.Add x_y, tps
     End If
 End Sub
 
-2. 类模块-CGradient
-Public ChangPointKP As Double '变坡点坐标
-Public LeftGrade As Double '变坡点左侧坡度
-Public LeftDistance As Double '变坡点左侧长度 可用于检查
-Public RightGrade As Double '变坡点右侧坡
-Public RightDistance As Double '度变坡点右侧长度 可用于检查
-Public Raduis As String '变坡半径
-Public TValue As String '变坡长度
-Public ChangPointInfo As String '直接保存从图上提的信息 可用于检查
-3. 类模块-CSimpleLine               
-'      (2)
-'     /
-'    /
-'   /
-'  /
-' /
-'(1)
-Public x1 As Double
-Public y1 As Double
-Public x2 As Double
-Public y2 As Double
-4.窗体代码
-Private k_a As Double
-Private k_a_pos As Double
-Private k_b As Double
-Private k_b_pos As Double
-Private g_low As Double
-Private g_high As Double
-Private t_low As Double
-Private t_high As Double
-Private x_left As Double
-Private x_right As Double
+类：CCell
+Private TextList() As CText
+Public col As Integer
+Public row As Integer
 
-Private Sub btnOutput_Click()
-    GatherGrade k_a, k_a_pos, g_low, g_high, t_low, t_high, x_left, x_right
-End Sub
-
-Private Sub UserForm_Initialize()
-    x_left = 0
-    x_right = 0
-End Sub
-
-
-Private Sub btnXArea_Click()
-    Dim point As Variant
-    fmCaptureGrade.Hide
-    point = ThisDrawing.Utility.GetPoint(, vbNewLine & "Pick up first point:")
-    x_left = point(0)
-    point = ThisDrawing.Utility.GetPoint(, vbNewLine & "Pick up second point:")
-    x_right = point(0)
-    If x_left > x_right Then
-        temp = x_left
-        x_left = x_right
-        x_right = temp
+Public Sub AddText(txt As CText)
+    Count = 0
+    If 1 Then
+        On Error Resume Next
+        Count = UBound(TextList)
     End If
-    chkXArea.BackColor = vbGreen
-    lbStatus.AddItem "x_left = " & x_left
-    lbStatus.AddItem "x_right = " & x_right
-    
-    fmCaptureGrade.Show
+    Count = Count + 1
+    ReDim Preserve TextList(1 To Count)
+    Set TextList(Count) = txt
 End Sub
 
-Private Sub btnK1_Click()
-    fmCaptureGrade.Hide
-    GetKL k_a, k_a_pos, chkK1
-    lbStatus.AddItem "k_a = " & k_a
-    lbStatus.AddItem "k_a_pos = " & k_a_pos
-    fmCaptureGrade.Show
-End Sub
-Private Sub btnK2_Click()
-    fmCaptureGrade.Hide
-    GetKL k_b, k_b_pos, chkK2
-    lbStatus.AddItem "k_b = " & k_b
-    lbStatus.AddItem "k_b_pos = " & k_b_pos
-    fmCaptureGrade.Show
-End Sub
-
-Private Sub btnGradeArea_Click()
-    fmCaptureGrade.Hide
-    GetYArea g_low, g_high, chkGradeArea
-    lbStatus.AddItem "g_low = " & g_low
-    lbStatus.AddItem "g_high = " & g_high
-    fmCaptureGrade.Show
-End Sub
-
-Private Sub btnStringArea_Click()
-    fmCaptureGrade.Hide
-    GetYArea t_low, t_high, chkStringArea
-    lbStatus.AddItem "t_low = " & t_low
-    lbStatus.AddItem "t_high = " & t_high
-    fmCaptureGrade.Show
-End Sub
-
-Private Sub GetYArea(y_low As Double, y_high As Double, chk)
-
-    y_low = 0
-    y_high = 0
-    
+Public Function GetString()
     On Error Resume Next
-    Set sset = ThisDrawing.SelectionSets.Add("temp")
-    On Error GoTo 0
-    Set sset = ThisDrawing.SelectionSets("temp")
-    sset.Clear
-    sset.SelectOnScreen
-    Dim str As String
-    Dim g(1 To 2) As Double
-    Dim g_OK(1 To 2) As Boolean
-    g_OK(1) = False
-    g_OK(2) = False
-    Dim sel As Integer
-    sel = 1
-    If sset.Count = 2 Then
-        For Each element In sset
-            If element.ObjectName = "AcDbLine" Then
-                element.GetBoundingBox p1, p2
-                g(sel) = p1(1)
-                g_OK(sel) = True
-            Else
-                chk.BackColor = vbRed
-                Call MsgBox("The selection was wrong. Line item must be selected.", vbExclamation, "An error has occured")
-                Exit Sub
+    Count = UBound(TextList)
+    If Count = 1 Then
+        GetString = TextList(1).TextString
+        Exit Function
+    End If
+    GetString = ""
+    Dim strList() As String, strTemp As String
+    Dim yList() As Double, yTemp As Double
+    ReDim strList(1 To Count)
+    ReDim yList(1 To Count)
+   
+    For i = 1 To Count
+    'For Each txt In TextList
+        'GetString = GetString & Chr(10) & txt.TextString
+        strList(i) = TextList(i).TextString
+        yList(i) = TextList(i).GetMidY
+    Next
+   
+    For i = 1 To Count - 1
+        For j = i + 1 To Count
+            If yList(i) < yList(j) Then
+                yTemp = yList(i)
+                yList(i) = yList(j)
+                yList(j) = yTemp
+                strTemp = strList(i)
+                strList(i) = strList(j)
+                strList(j) = strTemp
             End If
-            sel = sel + 1
         Next
-        If g(1) < g(2) Then
-            y_low = Round(g(1), G_ROUND) - 1
-            y_high = Round(g(2), G_ROUND) + 1
+    Next
+    GetString = strList(1)
+    For i = 2 To Count
+        GetString = GetString & Chr(10) & strList(i)
+    Next
+End Function
+
+类：CPoint
+Public MinP As Double
+Public MaxP As Double
+
+类：CPointSet
+Public Count As Integer
+Private arrPoints() As CPoint
+Public Function GetPoints()
+    GetPoints = arrPoints
+End Function
+
+Public Function IsWithin(v) As Boolean
+    IsWithin = False
+    For Each p In arrPoints
+        If p.MinP <= v And p.MaxP >= v Then
+            IsWithin = True
+            Exit Function
+        End If
+    Next
+End Function
+
+Public Function RemoveShortLines(dicRemove) As Integer
+    RemoveShortLines = Count
+    If Count < 1 Then Exit Function
+    Dim arrP() As CPoint
+    ReDim arrP(1 To Count)
+    j = 0
+    Dim bRemove As Boolean
+    For i = 1 To Count
+        bRemove = False
+        For Each p In dicRemove
+            If p.MinP = arrPoints(i).MinP And p.MaxP = arrPoints(i).MaxP Then
+                bRemove = True
+            End If
+        Next
+        If Not bRemove Then
+            j = j + 1
+            Set arrP(j) = arrPoints(i)
+        End If
+    Next
+   
+    If j > 0 Then
+        ReDim Preserve arrP(1 To j)
+        arrPoints = arrP
+    End If
+   
+    Count = j
+    RemoveShortLines = Count
+End Function
+Public Function RemoveWith(ByVal cpt As CPoint) As Integer
+    If Count = 0 Then
+        Count = 0
+        RemoveWith = 0
+        Exit Function
+    End If
+    iRemoveAt = 0
+   
+    For i = 1 To Count
+        If arrPoints(i).MaxP = cpt.MaxP And arrPoints(i).MinP = cpt.MinP Then
+            iRemoveAt = i
+            Exit For
+        End If
+    Next
+    If iRemoveAt > 0 Then
+        Count = Count - 1
+        If Count > 0 Then
+            'If iRemoveAt <= Count Then
+                For j = iRemoveAt To Count
+                    arrPoints(j).MaxP = arrPoints(j + 1).MaxP
+                    arrPoints(j).MinP = arrPoints(j + 1).MinP
+                Next
+            'End If
+            ReDim Preserve arrPoints(1 To Count)
         Else
-            y_low = Round(g(2), G_ROUND) - 1
-            y_high = Round(g(1), G_ROUND) + 1
+            Count = 0
+            'ReDim arrPoints()
         End If
     End If
-    
-    If g_OK(1) And g_OK(2) Then
-        chk.BackColor = vbGreen
-    Else
-        chk.BackColor = vbRed
-        Call MsgBox("The selection was wrong")
-    End If
-End Sub
-Private Sub GetKL(k As Double, k_pos As Double, chk)
+    RemoveWith = Count
+End Function
 
-    k = 0
-    k_pos = 0
-    k_OK = False
-    k_pos_OK = False
-    
-    On Error Resume Next
-    Set sset = ThisDrawing.SelectionSets.Add("temp")
-    On Error GoTo 0
-    Set sset = ThisDrawing.SelectionSets("temp")
-    sset.Clear
-    sset.SelectOnScreen
-    Dim str As String
-    If sset.Count = 2 Then
-        For Each element In sset
-            If element.ObjectName = "AcDbText" Then
-                str = Right(element.TextString, Len(element.TextString) - 1)
-                k = CDbl(str)
-                k_OK = True
-            ElseIf element.ObjectName = "AcDbLine" Then
-                element.GetBoundingBox p1, p2
-                k_pos = Round(p1(0), G_ROUND)
-                k_pos_OK = True
+
+Public Sub Add(Point1, Point2)
+    If Point1 > Point2 Then
+        MinP = Point2
+        MaxP = Point1
+    Else
+        MinP = Point1
+        MaxP = Point2
+    End If
+   
+    If Count > 0 Then
+        For Each point In arrPoints
+            If point.MaxP = MinP Then
+                point.MaxP = MaxP
+                Exit Sub
             End If
+            If point.MinP = MaxP Then
+                point.MinP = MinP
+                Exit Sub
+            End If
+            If point.MaxP = MaxP And point.MinP = MinP Then Exit Sub
         Next
     End If
-    
-    If k_OK And k_pos_OK Then
-        chk.BackColor = vbGreen
-    Else
-        chk.BackColor = vbRed
-        Call MsgBox("The selection was wrong")
-    End If
-
+    Count = Count + 1
+    ReDim Preserve arrPoints(1 To Count)
+    Set arrPoints(Count) = New CPoint
+    arrPoints(Count).MinP = MinP
+    arrPoints(Count).MaxP = MaxP
+   
 End Sub
+
+类：CText
+Private MinPoint(0 To 2) As Double
+Private MaxPoint(0 To 2) As Double
+Public TextString As String
+
+Public Sub SetMinPoint(p)
+    MinPoint(0) = p(0)
+    MinPoint(1) = p(1)
+    MinPoint(2) = p(2)
+End Sub
+
+Public Sub SetMaxPoint(p)
+    MaxPoint(0) = p(0)
+    MaxPoint(1) = p(1)
+    MaxPoint(2) = p(2)
+End Sub
+
+Public Function GetMinPoint()
+    GetMinPoint = MinPoint
+End Function
+
+Public Function GetMaxPoint()
+    GetMaxPoint = MaxPoint()
+End Function
+
+Public Function GetMidX()
+    GetMidX = (MinPoint(0) + MaxPoint(0)) / 2
+End Function
+Public Function GetMidY()
+    GetMidY = (MinPoint(1) + MaxPoint(1)) / 2
+End Function
+
+不完善的地方：
+1.没有用Set Get定义类的属性
+2.没有用算法去合并某一行或某一列所有的表格线，只是对首尾能够连接上的做了处理
