@@ -25,4 +25,8 @@ List my small scripts and tools
 
   http://blog.sina.com.cn/s/blog_56b95d93010165tf.html
 
+6. CBTC_Lua_Script_for_Wireshark_Generator
+
+  include a tool to generate lua scripts for wireshark, and some generated scripts.
+
 
