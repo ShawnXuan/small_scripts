@@ -28,7 +28,7 @@ TrainLength = 250.0
 a = 1.0
 speed = 601.2/3.6 # 167m/s
 deltaT = 0.5 #time steps
-duration = 200 #simlation time +-10 minutes
+duration = 400 #simlation time +-10 minutes
 
 departure_switch_speed = 100/3.6
 departure_s = departure_switch_speed*departure_switch_speed/2/a
@@ -107,7 +107,7 @@ class train:
         
 def plot_trains():
     global ax, f
-    global train1, train2, train3
+    global train1, train2, train3, train4
 
     #for i, line in enumerate(ax.lines):
     for i in reversed(range(len(ax.lines))):
@@ -118,11 +118,13 @@ def plot_trains():
     train1.plot(ax)
     train2.plot(ax)
     train3.plot(ax)
+    train4.plot(ax)
     
-    ad = np.array([arrival_s, departure_s])
-    xticks = ax.get_xticks()
-    xticks = np.concatenate((xticks,ad))
-    ax.set_xticks(xticks)
+    ad = np.array([arrival_s, 0, departure_s, 10000, 30000,50000,-16000, -36000,-56000])
+    #xticks = ax.get_xticks()
+    #xticks = np.concatenate((xticks,ad))
+    #ax.set_xticks(xticks)
+    ax.set_xticks(ad)
     f.canvas.draw()
 
     
@@ -143,9 +145,10 @@ tk.Label(frm_trains, text='Time Offset(min)').grid(row=0, column=1)
 tk.Label(frm_trains, text='Stop').grid(row=0, column=2)
 tk.Label(frm_trains, text='Dwell Time(sec)').grid(row=0, column=3)
 
-train1 = train(frm_trains, 1, offset=-4, stop=True)
-train2 = train(frm_trains, 2, dwell=313)
-train3 = train(frm_trains, 3, offset=4, stop=False)
+train1 = train(frm_trains, 1, offset=-4, stop=True, dwell=313)
+train2 = train(frm_trains, 2, offset=0,  stop=False, dwell=0)
+train3 = train(frm_trains, 3, offset=4, stop=True, dwell=313)
+train4 = train(frm_trains, 4, offset=8, stop=False, dwell=0)
 
 frm_plot = tk.Frame(frm_main)
 frm_plot.pack(side='bottom')
@@ -161,6 +164,7 @@ ax.grid(True)
 train1.plot(ax)
 train2.plot(ax)
 train3.plot(ax)
+train4.plot(ax)
 #f.clf()
 
 #xticks = ax.get_xticks()
