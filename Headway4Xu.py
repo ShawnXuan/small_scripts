@@ -279,11 +279,13 @@ f.tight_layout()
 ax.grid(True)
 
 
-#plot_trains()
-train1.plot(ax)
-train2.plot(ax)
-train3.plot(ax)
-train4.plot(ax)
+plot_trains()
+#==============================================================================
+# train1.plot(ax)
+# train2.plot(ax)
+# train3.plot(ax)
+# train4.plot(ax)
+#==============================================================================
 #f.clf()
 
 #xticks = ax.get_xticks()
