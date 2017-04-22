@@ -35,7 +35,7 @@ departure_switch_speed = 100/3.6
 departure_s = departure_switch_speed*departure_switch_speed/2/a
 arrival_switch_speed = 200/3.6
 arrival_s = -arrival_switch_speed*arrival_switch_speed/2/a
-joints = np.array([-56000, -36000,-16000, arrival_s, 0, departure_s, 10000, 30000,50000])
+joints = np.array([-56000, -36000,-16000, int(arrival_s), 0, int(departure_s), 10000, 30000,50000])
 
 class train:
     def __init__(self, master, id, offset=0, stop=True, dwell=90):
@@ -119,6 +119,7 @@ class train:
         #print(i, self.s[i], self.t[i])
         #self.head = ax.plot([self.s[i]-TrainLength,self.s[i]], [ct, ct],'ro')
         self.head = ax.plot([self.s[i]], [ct],'ro')
+        #self.head = ax.plot([self.s[i]], [ax.get_ylim()[0]+100],'ro')
         
         
         
@@ -147,6 +148,7 @@ def plot_trains():
     joints=[]
     for s in secs:
         joints.append(float(s))
+    joints_label = ["%.1f"%(x/1000) for x in joints]
     #secs = float(secs)
     #print(secs)
 
@@ -166,6 +168,8 @@ def plot_trains():
     #xticks = np.concatenate((xticks,ad))
     #ax.set_xticks(xticks)
     ax.set_xticks(joints)
+    ax.set_xticklabels(joints_label, rotation=-45)
+    
     #print(type(ax.get_ylim()))
     ylim = ax.get_ylim()
     print(ylim[0])
@@ -271,6 +275,7 @@ f = Figure(figsize=(16, 8), dpi=100)
 
 #f, ax = plt.subplots()
 ax = f.add_subplot(111)
+f.tight_layout()
 ax.grid(True)
 
 
