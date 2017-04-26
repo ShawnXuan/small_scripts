@@ -33,6 +33,9 @@ List my small scripts and tools
   a small and simple tool to calculate train headway in idea condition.
 
 8. PhotoMarker.py  
-  for Dr. Guang. Add address and time date on the photos automaticly. to be done!
+  for Dr. Guang. Add address(folder name) and time date on the photos automaticly. 
+  
+9. inv_dy_pro.py  
+  a simple dynamic programming example, ref https://www.youtube.com/watch?v=yKCbRPrrw7A&t=912s for detail.
 
 
