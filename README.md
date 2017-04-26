@@ -37,5 +37,7 @@ List my small scripts and tools
   
 9. inv_dy_pro.py  
   a simple dynamic programming example, ref https://www.youtube.com/watch?v=yKCbRPrrw7A&t=912s for detail.
+  
+  $x_1$
 
 
